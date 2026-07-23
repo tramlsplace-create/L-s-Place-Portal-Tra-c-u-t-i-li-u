@@ -47,7 +47,7 @@ import { Footer } from './components/Footer';
 
 // Fixed Google Sheet URL configured directly in code
 export const FIXED_GOOGLE_SHEET_URL =
-  'https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit';
+  'https://docs.google.com/spreadsheets/d/19gJViujZaG1gyr_ZvndH_S-UA5B_p6Jxk7uoK6LPFkw/edit?gid=0#gid=0';
 
 export default function App() {
   // Navigation Tab State
@@ -84,7 +84,11 @@ export default function App() {
     const savedConfig = localStorage.getItem('lsplace_sheet_config');
     if (savedConfig) {
       try {
-        return JSON.parse(savedConfig);
+        const parsed = JSON.parse(savedConfig);
+        if (!parsed.sheetUrlOrId || parsed.sheetUrlOrId.includes('1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms')) {
+          parsed.sheetUrlOrId = FIXED_GOOGLE_SHEET_URL;
+        }
+        return parsed;
       } catch (e) {
         console.error('Failed to parse saved sheet config', e);
       }
