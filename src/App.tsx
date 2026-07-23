@@ -16,6 +16,9 @@ import {
   Image as ImageIcon,
   HelpCircle,
   FolderOpen,
+  Menu,
+  X,
+  ChevronRight,
 } from 'lucide-react';
 import {
   DocumentItem,
@@ -27,7 +30,7 @@ import {
   UserRole,
 } from './types';
 import { INITIAL_DOCUMENTS, DEFAULT_USER } from './data/mockData';
-import { parseCsvToDocuments, extractSheetCsvUrl } from './utils/googleSheets';
+import { parseCsvToDocuments, extractSheetCsvUrl, fetchCsvWithFallbacks } from './utils/googleSheets';
 
 import { Sidebar } from './components/Sidebar';
 import { PortalHomeDashboard } from './components/PortalHomeDashboard';
@@ -112,6 +115,7 @@ export default function App() {
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocumentItem | null>(null);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Sync to LocalStorage
   useEffect(() => {
@@ -132,30 +136,15 @@ export default function App() {
       const urlToUse = overrideUrl || FIXED_GOOGLE_SHEET_URL;
       if (!urlToUse) return;
 
-      const csvExportUrl = extractSheetCsvUrl(urlToUse);
       setSheetConfig((prev) => ({ ...prev, syncStatus: 'syncing', errorMessage: undefined }));
 
       try {
-        // Cache bust query parameter to ensure immediate live Google Sheet data
-        const cacheBustUrl = `${csvExportUrl}${csvExportUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`;
-        
-        // Fetch via Express Backend Proxy
-        const response = await fetch(`/api/sheets/fetch?url=${encodeURIComponent(cacheBustUrl)}`);
-
-        let csvText = '';
-        if (response.ok) {
-          csvText = await response.text();
-        } else {
-          // Direct client fetch fallback
-          const directRes = await fetch(cacheBustUrl, { cache: 'no-store' });
-          if (!directRes.ok) throw new Error(`HTTP Error ${directRes.status}`);
-          csvText = await directRes.text();
-        }
-
+        const csvText = await fetchCsvWithFallbacks(urlToUse);
         const parsedDocs = parseCsvToDocuments(csvText);
 
         if (parsedDocs.length > 0) {
           setDocuments(parsedDocs);
+          localStorage.setItem('lsplace_docs', JSON.stringify(parsedDocs));
           setSheetConfig({
             sheetUrlOrId: urlToUse,
             lastSyncedAt: new Date().toISOString(),
@@ -163,24 +152,13 @@ export default function App() {
             autoSync: true,
             totalItems: parsedDocs.length,
           });
-        } else {
-          // Fallback to built-in document catalog
-          setDocuments((prev) => (prev.length > 0 ? prev : INITIAL_DOCUMENTS));
-          setSheetConfig((prev) => ({
-            ...prev,
-            lastSyncedAt: new Date().toISOString(),
-            syncStatus: 'success',
-            autoSync: true,
-            totalItems: INITIAL_DOCUMENTS.length,
-          }));
         }
       } catch (error: any) {
         console.warn('Google Sheet background sync notice:', error);
-        setDocuments((prev) => (prev.length > 0 ? prev : INITIAL_DOCUMENTS));
         setSheetConfig((prev) => ({
           ...prev,
           syncStatus: 'idle',
-          totalItems: INITIAL_DOCUMENTS.length,
+          errorMessage: error?.message,
         }));
       }
     },
@@ -313,23 +291,109 @@ export default function App() {
       {/* Main Workspace Canvas */}
       <div className="flex-1 min-w-0 flex flex-col min-h-screen">
         {/* Top Floating Mobile Bar */}
-        <div className="md:hidden bg-white border-b border-slate-200 p-3 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
-          <div className="flex items-center space-x-2 font-bold text-slate-900 text-sm">
-            <div className="w-6 h-6 rounded bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
-              L
+        <div className="md:hidden bg-white border-b border-slate-200 p-2.5 px-3 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+          <button
+            onClick={() => setIsMobileSidebarOpen(true)}
+            className="flex items-center space-x-2 text-slate-900 text-sm font-bold active:opacity-70 transition text-left"
+            title="Nhấn để mở Menu Sidebar"
+          >
+            <div className="w-8 h-8 rounded-lg bg-[#2B62B8] text-white flex items-center justify-center font-bold text-sm shadow-2xs shrink-0">
+              <Menu className="w-4.5 h-4.5" />
             </div>
-            <span>L's Place Portal 🌿</span>
-          </div>
+            <div className="flex flex-col">
+              <div className="flex items-center space-x-1">
+                <span className="font-extrabold text-blue-700">L's Place</span>
+                <span className="text-xs text-slate-500 font-normal">Portal 🌿</span>
+              </div>
+              <span className="text-[10px] text-[#2B62B8] font-semibold flex items-center space-x-0.5">
+                <span>Mở Menu Danh Mục</span>
+                <ChevronRight className="w-3 h-3" />
+              </span>
+            </div>
+          </button>
 
           <div className="flex items-center space-x-2">
             <button
               onClick={() => setAiModalOpen(true)}
-              className="p-1.5 bg-amber-500 text-white rounded-lg text-xs font-bold"
+              className="p-1.5 px-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold flex items-center space-x-1 shadow-2xs transition"
             >
               <Sparkles className="w-4 h-4" />
+              <span className="text-[11px]">Hỏi AI</span>
             </button>
           </div>
         </div>
+
+        {/* Mobile Slide-over Sidebar Drawer */}
+        {isMobileSidebarOpen && (
+          <div className="fixed inset-0 z-50 md:hidden flex">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+              onClick={() => setIsMobileSidebarOpen(false)}
+            ></div>
+
+            {/* Slide-in Drawer Container */}
+            <div className="relative w-72 max-w-[85vw] bg-[#FAF9F6] h-full shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-200 overflow-hidden">
+              {/* Drawer Header */}
+              <div className="p-3 bg-white border-b border-slate-200 flex items-center justify-between shrink-0">
+                <div className="flex items-center space-x-2">
+                  <div className="w-7 h-7 rounded bg-[#2B62B8] text-white flex items-center justify-center font-extrabold text-xs">
+                    L
+                  </div>
+                  <span className="font-bold text-slate-800 text-xs">Danh Mục & Quy Trình</span>
+                </div>
+                <button
+                  onClick={() => setIsMobileSidebarOpen(false)}
+                  className="p-1.5 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition"
+                  title="Đóng menu"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Sidebar Component */}
+              <div className="flex-1 overflow-y-auto">
+                <Sidebar
+                  activeTab={activeTab}
+                  onSelectTab={(tab) => {
+                    setActiveTab(tab);
+                    if (tab === 'Trang chủ') {
+                      updateFilter({ query: '', category: 'Tất cả', department: 'Tất cả' });
+                    }
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  selectedCategory={filter.category}
+                  onSelectCategory={(cat) => {
+                    setActiveTab('Tài liệu');
+                    updateFilter({ category: cat });
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  selectedDepartment={filter.department}
+                  onSelectDepartment={(dept) => {
+                    setActiveTab('Tài liệu');
+                    updateFilter({ department: dept });
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  onOpenSyncModal={() => {
+                    setSyncModalOpen(true);
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  onOpenAIModal={() => {
+                    setAiModalOpen(true);
+                    setIsMobileSidebarOpen(false);
+                  }}
+                  totalDocs={documents.length}
+                  documents={documents}
+                  sheetConfig={sheetConfig}
+                  onTriggerSync={() => {
+                    handleSyncGoogleSheet(FIXED_GOOGLE_SHEET_URL);
+                    setIsMobileSidebarOpen(false);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main Content Area */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-6">
@@ -489,6 +553,7 @@ export default function App() {
             tag: '',
           });
         }}
+        onOpenSidebar={() => setIsMobileSidebarOpen(true)}
         onOpenAIModal={() => setAiModalOpen(true)}
       />
     </div>

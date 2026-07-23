@@ -88,14 +88,47 @@ export const AISearchAssistantModal: React.FC<AISearchAssistantModalProps> = ({
   };
 
   const fallbackSearchDocs = (q: string) => {
-    const lower = q.toLowerCase();
+    const lower = q.toLowerCase().trim();
+    if (!lower) return [];
+
+    // Extract core keywords (filtering out tiny stop words)
+    const keywords = lower
+      .split(/[\s,?.!;-]+/)
+      .filter((k) => k.length > 1 && !['tôi', 'muốn', 'là', 'cho', 'về', 'dùng', 'thì', 'nào', 'cần', 'các', 'những', 'được'].includes(k));
+
     return documents
-      .filter(
-        (d) =>
-          d.title.toLowerCase().includes(lower) ||
-          d.description.toLowerCase().includes(lower)
-      )
-      .slice(0, 3);
+      .map((doc) => {
+        const titleLower = doc.title.toLowerCase();
+        const descLower = (doc.description || '').toLowerCase();
+        const codeLower = doc.code.toLowerCase();
+        const deptLower = doc.department.toLowerCase();
+        const catLower = doc.category.toLowerCase();
+        const tagsLower = (doc.tags || []).map((t) => t.toLowerCase()).join(' ');
+
+        const fullText = `${titleLower} ${descLower} ${codeLower} ${deptLower} ${catLower} ${tagsLower}`;
+
+        let score = 0;
+
+        // Direct full query match
+        if (fullText.includes(lower)) score += 15;
+        if (titleLower.includes(lower)) score += 20;
+
+        // Keyword matches
+        keywords.forEach((kw) => {
+          if (titleLower.includes(kw)) score += 5;
+          if (codeLower.includes(kw)) score += 8;
+          if (descLower.includes(kw)) score += 3;
+          if (tagsLower.includes(kw)) score += 4;
+          if (deptLower.includes(kw)) score += 2;
+          if (catLower.includes(kw)) score += 2;
+        });
+
+        return { doc, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.doc)
+      .slice(0, 4);
   };
 
   return (

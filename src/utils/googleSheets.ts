@@ -23,6 +23,58 @@ export function extractSheetCsvUrl(input: string): string {
   return trimmed;
 }
 
+export async function fetchCsvWithFallbacks(rawUrl: string): Promise<string> {
+  const csvExportUrl = extractSheetCsvUrl(rawUrl);
+  const cacheBustUrl = `${csvExportUrl}${csvExportUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`;
+
+  // List of strategies to fetch Google Sheet CSV data
+  const strategies: { name: string; getUrl: () => string }[] = [
+    // Strategy 1: Backend Express Proxy (if running on Node server)
+    {
+      name: 'Express Backend Proxy',
+      getUrl: () => `/api/sheets/fetch?url=${encodeURIComponent(cacheBustUrl)}`,
+    },
+    // Strategy 2: Direct Google Sheets GViz CSV Endpoint
+    {
+      name: 'Direct GViz Endpoint',
+      getUrl: () => cacheBustUrl,
+    },
+    // Strategy 3: Alternative Export CSV Endpoint
+    {
+      name: 'Direct Export Endpoint',
+      getUrl: () => cacheBustUrl.replace('/gviz/tq?tqx=out:csv', '/export?format=csv'),
+    },
+    // Strategy 4: Public CORS Proxy 1 (AllOrigins)
+    {
+      name: 'AllOrigins CORS Proxy',
+      getUrl: () => `https://api.allorigins.win/raw?url=${encodeURIComponent(cacheBustUrl)}`,
+    },
+    // Strategy 5: Public CORS Proxy 2 (CorsProxy IO)
+    {
+      name: 'CorsProxy IO',
+      getUrl: () => `https://corsproxy.io/?${encodeURIComponent(cacheBustUrl)}`,
+    },
+  ];
+
+  for (const strategy of strategies) {
+    try {
+      const fetchUrl = strategy.getUrl();
+      const res = await fetch(fetchUrl, { cache: 'no-store' });
+      if (res.ok) {
+        const text = await res.text();
+        if (text && !text.trim().toLowerCase().startsWith('<!doctype html') && !text.trim().toLowerCase().startsWith('<html')) {
+          console.log(`[GoogleSheetsSync] Success via ${strategy.name}`);
+          return text;
+        }
+      }
+    } catch (err) {
+      console.warn(`[GoogleSheetsSync] ${strategy.name} failed:`, err);
+    }
+  }
+
+  throw new Error('Không thể kết nối đến Google Sheet. Vui lòng kiểm tra liên kết hoặc quyền truy cập của Sheet.');
+}
+
 export function parseCsvToDocuments(csvString: string): DocumentItem[] {
   if (!csvString || csvString.trim().startsWith('<!DOCTYPE html') || csvString.trim().startsWith('<html')) {
     return [];
