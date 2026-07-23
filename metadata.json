@@ -1,0 +1,6 @@
+{
+  "name": "L's Place - Portal Tra Cứu Tài Liệu Nội Bộ",
+  "description": "Hệ thống tra cứu quy trình, quy định, biểu mẫu và tài liệu đào tạo nội bộ L's Place Food Mart tự động đồng bộ từ Google Sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
